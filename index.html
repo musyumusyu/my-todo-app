@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>My ToDoリスト（Google同期）</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      min-height: 100vh;
+      background-color: #f6f6f6;
+      margin: 0;
+      padding: 20px;
+    }
+
+    .container {
+      background: white;
+      padding: 24px;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      width: 700px;
+      max-width: 100%;
+    }
+
+    h1 {
+      text-align: center;
+      margin-bottom: 20px;
+      font-size: 1.8rem;
+    }
+
+    .input-area {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: center;
+    }
+
+    input, button {
+      font-size: 16px;
+    }
+
+    input[type="text"] {
+      flex: 1;
+      min-width: 200px;
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+    }
+
+    input[type="datetime-local"] {
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+    }
+
+    button {
+      padding: 10px 14px;
+      border: none;
+      border-radius: 6px;
+      background-color: #3498db;
+      color: white;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+
+    button:hover {
+      background-color: #2980b9;
+    }
+
+    .buttons {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    ul {
+      list-style: none;
+      padding: 0;
+      margin-top: 20px;
+    }
+
+    li {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin: 8px 0;
+      padding: 10px;
+      border: 1px solid #eee;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+      background-color: #fff;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+
+    li input[type="checkbox"] {
+      flex-shrink: 0;
+      transform: scale(1.2);
+    }
+
+    li .task-content {
+      flex: 1;
+      min-width: 0;
+      overflow-x: auto;
+      white-space: nowrap;
+      scrollbar-width: none;
+    }
+
+    li .task-content::-webkit-scrollbar {
+      display: none;
+    }
+
+    li.completed .task-title {
+      text-decoration: line-through;
+      color: gray;
+    }
+
+    li button {
+      flex-shrink: 0;
+      padding: 6px 10px;
+      background-color: #e74c3c;
+      border-radius: 6px;
+    }
+
+    li button:hover {
+      background-color: #c0392b;
+    }
+
+    /* 🟡 締切状態別カラー */
+    .deadline-normal { color: black; }
+    .deadline-soon { color: #e67e22; }
+    .deadline-warning { color: #f1c40f; }
+    .deadline-overdue { color: #e74c3c; }
+
+    /* 📱 スマホ対応 */
+    @media (max-width: 600px) {
+      .container { padding: 16px; }
+      h1 { font-size: 1.4rem; }
+      .input-area { flex-direction: column; align-items: stretch; }
+      input, button { width: 100%; font-size: 1rem; }
+      li { flex-direction: column; align-items: flex-start; gap: 6px; }
+      li .task-content { white-space: normal; overflow-x: hidden; }
+      li button { align-self: flex-end; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>My ToDoリスト（Google同期）</h1>
+    <div id="authArea">
+      <button id="loginBtn">Googleでログイン</button>
+      <p id="userInfo"></p>
+    </div>
+
+    <div class="input-area" id="inputArea" style="display:none;">
+      <input type="text" id="taskInput" placeholder="タスクを入力..." />
+      <input type="datetime-local" id="deadlineInput" />
+      <button id="addBtn">追加</button>
+    </div>
+
+    <div class="buttons" id="taskButtons" style="display:none;">
+      <button id="sortCompletedBtn">完了済みを下に並べる</button>
+      <button id="toggleCompletedBtn">完了済みを非表示にする</button>
+    </div>
+
+    <ul id="taskList"></ul>
+  </div>
+
+  <script type="module">
+    // Firebase SDK 読み込み
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
+    import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
+    import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, updateDoc, query, where } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+
+    // 🔧 あなたのfirebaseConfigをここに貼り付けてください
+    const firebaseConfig = {
+  apiKey: "AIzaSyBeOTDiTz0SogtNYDwCuAgRjgX8TJzlZIY",
+  authDomain: "todo-app-9431f.firebaseapp.com",
+  projectId: "todo-app-9431f",
+  storageBucket: "todo-app-9431f.firebasestorage.app",
+  messagingSenderId: "144419113609",
+  appId: "1:144419113609:web:13b0905d29084317581458",
+  measurementId: "G-EG5NB9WZY9"
+};
+
+
+    // Firebase初期化
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const provider = new GoogleAuthProvider();
+
+    // 要素取得
+    const loginBtn = document.getElementById("loginBtn");
+    const userInfo = document.getElementById("userInfo");
+    const taskInput = document.getElementById("taskInput");
+    const deadlineInput = document.getElementById("deadlineInput");
+    const addBtn = document.getElementById("addBtn");
+    const taskList = document.getElementById("taskList");
+    const sortCompletedBtn = document.getElementById("sortCompletedBtn");
+    const toggleCompletedBtn = document.getElementById("toggleCompletedBtn");
+    const inputArea = document.getElementById("inputArea");
+    const taskButtons = document.getElementById("taskButtons");
+
+    let currentUser = null;
+    let tasks = [];
+    let sortCompletedLast = false;
+    let hideCompleted = false;
+
+    function getDeadlineClass(diffMs) {
+      if (isNaN(diffMs)) return "deadline-normal";
+      if (diffMs < 0) return "deadline-overdue";
+      if (diffMs < 24*60*60*1000) return "deadline-soon";
+      if (diffMs < 3*24*60*60*1000) return "deadline-warning";
+      return "deadline-normal";
+    }
+
+    function renderTasks() {
+      taskList.innerHTML = "";
+      const sorted = [...tasks].sort((a,b)=>{
+        if (sortCompletedLast && a.completed!==b.completed) return a.completed?1:-1;
+        return new Date(a.deadline)-new Date(b.deadline);
+      });
+
+      sorted.forEach((task)=>{
+        if (hideCompleted && task.completed) return;
+        const li = document.createElement("li");
+        if (task.completed) li.classList.add("completed");
+
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = task.completed;
+        checkbox.addEventListener("change", async ()=>{
+          task.completed = !task.completed;
+          await updateDoc(doc(db,"tasks",task.id),{completed:task.completed});
+          renderTasks();
+        });
+
+        const taskContent = document.createElement("div");
+        taskContent.className = "task-content";
+        const title = document.createElement("span");
+        title.textContent = task.title;
+        title.className = "task-title";
+
+        const small = document.createElement("small");
+        const deadline = new Date(task.deadline);
+        const now = new Date();
+        const diff = deadline - now;
+        let remain = "";
+        if (!isNaN(diff) && diff > 0) {
+          const d = Math.floor(diff / (1000*60*60*24));
+          const h = Math.floor((diff / (1000*60*60))%24);
+          remain = d>0 ? `（あと${d}日${h}時間）` : "（まもなく）";
+        } else remain = "（期限切れ）";
+        small.textContent = `締切: ${deadline.toLocaleString()} ${remain}`;
+        small.classList.add(getDeadlineClass(diff));
+
+        taskContent.append(title, document.createElement("br"), small);
+
+        const delBtn = document.createElement("button");
+        delBtn.textContent = "削除";
+        delBtn.addEventListener("click", async ()=>{
+          await deleteDoc(doc(db,"tasks",task.id));
+          tasks = tasks.filter(t=>t.id!==task.id);
+          renderTasks();
+        });
+
+        li.append(checkbox, taskContent, delBtn);
+        taskList.append(li);
+      });
+    }
+
+    async function loadTasks() {
+      if (!currentUser) return;
+      const q = query(collection(db,"tasks"), where("uid","==",currentUser.uid));
+      const snap = await getDocs(q);
+      tasks = snap.docs.map(d=>({id:d.id,...d.data()}));
+      renderTasks();
+    }
+
+    loginBtn.addEventListener("click", async ()=>{
+      if (!currentUser) {
+        const result = await signInWithPopup(auth, provider);
+        currentUser = result.user;
+        userInfo.textContent = `こんにちは、${currentUser.displayName} さん`;
+        loginBtn.textContent = "ログアウト";
+        inputArea.style.display = "flex";
+        taskButtons.style.display = "flex";
+        await loadTasks();
+      } else {
+        await signOut(auth);
+        currentUser = null;
+        userInfo.textContent = "";
+        loginBtn.textContent = "Googleでログイン";
+        inputArea.style.display = "none";
+        taskButtons.style.display = "none";
+        taskList.innerHTML = "";
+      }
+    });
+
+    addBtn.addEventListener("click", async ()=>{
+      if (!taskInput.value.trim() || !deadlineInput.value) return alert("タスク名と締切日時を入力してください。");
+      const newTask = {
+        uid: currentUser.uid,
+        title: taskInput.value,
+        deadline: deadlineInput.value,
+        completed: false,
+        createdAt: new Date()
+      };
+      const docRef = await addDoc(collection(db,"tasks"), newTask);
+      newTask.id = docRef.id;
+      tasks.push(newTask);
+      renderTasks();
+      taskInput.value = "";
+      deadlineInput.value = "";
+    });
+
+    sortCompletedBtn.addEventListener("click", ()=>{
+      sortCompletedLast = !sortCompletedLast;
+      renderTasks();
+    });
+
+    toggleCompletedBtn.addEventListener("click", ()=>{
+      hideCompleted = !hideCompleted;
+      renderTasks();
+    });
+
+    setInterval(renderTasks, 60000);
+  </script>
+</body>
+</html>
